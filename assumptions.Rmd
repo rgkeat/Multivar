@@ -1,0 +1,247 @@
+<!-- R Commander Markdown Template -->
+
+Replace with Main Title
+=======================
+
+### chard
+
+### `r as.character(Sys.Date())`
+
+```{r echo=FALSE}
+# include this code chunk as-is to set options
+knitr::opts_chunk$set(comment=NA, prompt=TRUE, out.width=750, fig.height=8, fig.width=8)
+library(Rcmdr)
+library(car)
+library(RcmdrMisc)
+```
+
+```{r}
+library(abind, pos=18)
+```
+
+
+```{r}
+library(e1071, pos=19)
+```
+
+
+
+### Numerical Summaries: EAWE01
+```{r}
+numSummary(EAWE01[,"EARNINGS", drop=FALSE], statistics=c("mean", "sd", "skewness", 
+  "kurtosis"), quantiles=c(0,.25,.5,.75,1), type="2")
+```
+
+
+### Numerical Summaries: EAWE01
+```{r}
+numSummary(EAWE01[,"EARNINGS", drop=FALSE], statistics=c("mean", "sd", "skewness", 
+  "kurtosis"), quantiles=c(0,.25,.5,.75,1), type="2")
+```
+
+
+### Numerical Summaries: EAWE01
+```{r}
+numSummary(EAWE01[,"EARNINGS", drop=FALSE], statistics=c("mean", "sd", "skewness", 
+  "kurtosis"), quantiles=c(0,.25,.5,.75,1), type="2")
+```
+
+
+### Boxplot: ~ EARNINGS
+```{r}
+Boxplot( ~ EARNINGS, data=EAWE01, id=list(method="y"))
+```
+
+
+### Normality Test: ~EARNINGS
+```{r}
+normalityTest(~EARNINGS, test="shapiro.test", data=EAWE01)
+```
+
+
+### Normality Test: ~EARNINGS
+```{r}
+normalityTest(~EARNINGS, test="shapiro.test", data=EAWE01)
+```
+
+
+### Correlation Test: EARNINGS, S
+```{r}
+with(EAWE01, cor.test(EARNINGS, S, alternative="two.sided", method="pearson"))
+```
+
+
+### Linear Model: RegModel.1: EARNINGS~S
+```{r}
+RegModel.1 <- lm(EARNINGS~S, data=EAWE01)
+summary(RegModel.1)
+```
+
+<!-- R Commander Markdown Template -->
+
+Replace with Main Title
+=======================
+
+### chard
+
+### `r as.character(Sys.Date())`
+
+```{r echo=FALSE}
+# include this code chunk as-is to set options
+knitr::opts_chunk$set(comment=NA, prompt=TRUE, out.width=750, fig.height=8, fig.width=8)
+library(Rcmdr)
+library(car)
+library(RcmdrMisc)
+```
+
+
+### Scatterplot: Residuals...101~S
+```{r}
+scatterplot(Residuals...101~S, regLine=TRUE, smooth=FALSE, 
+  id=list(method='mahal', n=2), boxplots=FALSE, data=EAWE01)
+```
+
+
+### Scatterplot: Residuals...101~S
+```{r}
+scatterplot(Residuals...101~S, regLine=TRUE, smooth=FALSE, 
+  id=list(method='mahal', n=2), boxplots=FALSE, data=EAWE01)
+```
+
+```{r}
+library(zoo, pos=20)
+```
+
+
+```{r}
+library(lmtest, pos=20)
+```
+
+
+
+### Breusch-Pagan Test: EARNINGS ~ S
+```{r}
+bptest(EARNINGS ~ S, varformula = ~ fitted.values(RegModel.1), 
+  studentize=FALSE, data=EAWE01)
+```
+
+
+### Histogram: Residuals...101
+```{r}
+with(EAWE01, Hist(Residuals...101, scale="percent", breaks="Sturges", 
+  col="darkgray"))
+```
+
+
+### Boxplot: ~ Residuals...101
+```{r}
+Boxplot( ~ Residuals...101, data=EAWE01, id=list(method="y"))
+```
+
+
+### Boxplot: ~ Residuals...101
+```{r}
+Boxplot( ~ Residuals...101, data=EAWE01, id=list(method="y"))
+```
+
+
+### Normality Test: ~Residuals...101
+```{r}
+normalityTest(~Residuals...101, test="shapiro.test", data=EAWE01)
+```
+
+
+### RESET Test: EARNINGS ~ S
+```{r}
+resettest(EARNINGS ~ S, power=2:3, type="regressor", data=EAWE01)
+```
+
+
+### Linear Model: RegModel.2: EARNINGS~EXP+S
+```{r}
+RegModel.2 <- lm(EARNINGS~EXP+S, data=EAWE01)
+summary(RegModel.2)
+```
+
+
+### Variance-Inflation Factors: RegModel.2
+```{r}
+vif(RegModel.2)
+```
+
+
+```{r}
+round(cov2cor(vcov(RegModel.2)), 3) # Correlations of parameter estimates
+```
+
+
+### Akaike Information Criterion (AIC): RegModel.1
+```{r}
+AIC(RegModel.1)
+```
+
+
+
+### Bayesian Information Criterion (BIC): RegModel.1
+```{r}
+BIC(RegModel.1)
+```
+
+
+### Akaike Information Criterion (AIC): RegModel.2
+```{r}
+AIC(RegModel.2)
+```
+
+
+
+### Bayesian Information Criterion (BIC): RegModel.2
+```{r}
+BIC(RegModel.2)
+```
+
+<!-- R Commander Markdown Template -->
+
+Replace with Main Title
+=======================
+
+### chard
+
+### `r as.character(Sys.Date())`
+
+```{r echo=FALSE}
+# include this code chunk as-is to set options
+knitr::opts_chunk$set(comment=NA, prompt=TRUE, out.width=750, fig.height=8, fig.width=8)
+library(Rcmdr)
+library(car)
+library(RcmdrMisc)
+```
+
+
+### Scatterplot Matrix: ~EXP+Residuals+S
+```{r}
+scatterplotMatrix(~EXP+Residuals+S, regLine=TRUE, smooth=FALSE, 
+  diagonal=list(method="density"), data=EAWE01)
+```
+
+
+### Breusch-Pagan Test: EARNINGS ~ EXP + S
+```{r}
+bptest(EARNINGS ~ EXP + S, varformula = ~ fitted.values(RegModel.2), 
+  studentize=FALSE, data=EAWE01)
+```
+
+
+### Histogram: ResidualsModel2
+```{r}
+with(EAWE01, Hist(ResidualsModel2, scale="frequency", breaks="Sturges", 
+  col="darkgray"))
+```
+
+
+### RESET Test: EARNINGS ~ EXP + S
+```{r}
+resettest(EARNINGS ~ EXP + S, power=2:3, type="regressor", data=EAWE01)
+```
+
+

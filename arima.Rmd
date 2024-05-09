@@ -1,0 +1,2151 @@
+-----------------------------------------------------------------------------------------------
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+References:
+1) For requirements of parameters of AR and MA (Autoregressive and Moving Average)
+https://online.stat.psu.edu/stat510/lesson/2/2.1
+
+2) How to write AR equation with seasonality differencing
+
+https://stackoverflow.com/questions/56879940/writing-mathematical-equation-for-an-arima1-1-00-1-0-12
+
+3) Excellent resource
+https://people.duke.edu/~rnau/411home.htm
+https://people.duke.edu/~rnau/411arim.htm
+
+# Require packages
+```{r}
+library(forecast)  #for forecast function
+library(fpp3)
+library(quantmod)
+library(tseries)
+library(timeSeries)
+library(xts)
+library(ggplot2)
+library(urca)
+library(plotly)
+library(ggfortify)
+library(tsm)
+```
+
+# If you encounter difficulty loading tsm:
+
+```{r}
+install.packages("remotes")
+remotes::install_github("KevinKotze/tsm")
+```
+
+
+# TIME SERIES ANALYSIS
+Time series analysis is the art of extracting meaningful insights from time series data by exploring the series' structure and characteristics and identifying patterns that can then be utilized to forecast future events of the series. 
+
+Box-Jenkins approach
+# Using ARIMA (Auto Regressive Integrated Moving Average). The general steps are as follows:
+AR - use past values of itself to model the time series
+MA - use past error terms to model the time series
+I - integrated - you have to DIFFERENCE the data first to convert to stationary t.s.
+
+STATIONARY
+
+AR(1): yt = a0 + a1*yt-1 + et (et = white noise)   
+       *yt = yt-1 + et = RANDOM WALK*
+AR(2): yt = a0 + a1 yt-1 + a2 yt-2 + et # 2 lags
+AR(p): yt = a0 + a1*yt-1 + a2* yt-2 + a3 yt-3 + .... + ap-1*yt-p + ap yp + et
+
+MA(1): yt = et + b1*et-1
+MA(q)
+ARMA(1,1): yt = a0 + a1*yt-1 + et + b1*et-1
+ARMA(p,q)
+ARIMA(p,d,q): d = differenced
+
+Step 1: Plot data as time series, and check if *stationary*
+Step 2: Difference data to make data stationary on mean (remove trend)
+Step 3: log transform data to make data stationary on variance (if necessary)
+Step 4: Difference log transform data to make data stationary on both mean and variance (if necessary)
+Step 5: Check statistically if the time series is already stationary (adf test, kpss test)
+Step 6: Plot ACF (Autocorrelation function) and PACF (Partial autocorrelation function) to identify potential AR and MA model
+Step 7: Identification of best fit ARIMA model
+Step 8: Forecast the time series using the best fit ARIMA model
+Step 9: Plot ACF and PACF for residuals of ARIMA model to ensure no more information is left for extraction
+
+# STATIONARY TIME SERIES
+A stationary time series is one whose statistical properties such as mean, variance, autocorrelation, etc. are all constant over time, i.e., it has the property that the mean, variance and autocorrelation structure do not change over time. 
+
+A stationarity looks like a flat looking series, without trend, constant variance over time, a constant autocorrelation structure over time and no periodic fluctuations.
+
+A stationary time series is one whose properties do not depend on the time at which the series is observed. Thus, time series with trends, or with seasonality, are not stationary - the trend and seasonality will affect the value of the time series at different times. 
+
+Sample plot of Stationary vs Non-stationary TS
+https://www.oreilly.com/library/view/hands-on-machine-learning/9781788992282/15c9cc40-bea2-4b75-902f-2e9739fec4ae.xhtml
+
+https://towardsdatascience.com/stationarity-in-time-series-analysis-90c94f27322
+
+On the other hand, a **white noise series** is stationary - it does not matter when you observe it, it should look much the same at any point in time. In general, a stationary time series will have no predictable patterns in the long-term. Time plots will show the series to be roughly horizontal (although some cyclic behaviour is possible), with constant variance.
+
+Most statistical forecasting methods are based on the assumption that the time series can be rendered approximately **stationary** (i.e., "stationarized") through the use of mathematical transformations. 
+
+A stationarized series is relatively easy to predict: you simply predict that its statistical properties will be the same in the future as they have been in the past. The predictions for the stationarized series can then be "untransformed," by reversing whatever mathematical transformations were previously used, to obtain predictions for the original series. Stationarizing a time series through differencing (where needed) is an important part of the process of fitting an Autoregressive Integrated Moving Average (ARIMA) model.
+
+Example of a series that is not stationary: 
+```{r}
+data(AirPassengers) # from datasets package
+View(AirPassengers)
+ap <- AirPassengers
+View(ap)
+head(ap, 24)
+str(ap)
+```
+
+# Understanding the AP object more
+```{r}
+ap
+str(ap)
+sum(is.na(ap)) #are there missing values
+frequency(ap)
+cycle(ap)
+tail(ap, 24)
+summary(ap)
+```
+
+Is the ap dataset also stationary? Does it have a trend and seasonality?
+```{r}
+# Plot the raw data using the base plot function
+p1 <- plot(ap,xlab="Date", 
+           ylab = "Passenger numbers (1000's)",
+           main="Air Passenger numbers from 1949 to 1960")
+p1
+```
+
+# Alteranative using ggfortify
+```{r}
+p2 <- autoplot(ap) + 
+      labs(x ="Date", 
+           y = "Passenger numbers (1000's)", 
+           title="Air Passengers from 1949 to 1960") 
+p2
+```
+
+Using boxplot to see seasonal effects
+```{r}
+bp1 <- boxplot(ap~cycle(ap),
+               xlab="Date", 
+               ylab = "Passenger Numbers (1000's)" ,
+               main ="Monthly Air Passengers Boxplot from 1949 to 1960")
+bp1
+```
+
+From these exploratory plots, we can make some initial inferences:
+
+1) The passenger numbers increase over time with each year which may be indicative of an increasing linear trend, perhaps due to increasing demand for flight travel and commercialisation of airlines in that time period.
+2) In the boxplot there are more passengers travelling in months 6 to 9 with higher means and higher variances than the other months, indicating seasonality with a apparent cycle of 12 months. The rationale for this could be more people taking holidays and fly over the summer months in the US.
+3) AirPassengers appears to be multiplicative time series as the passenger numbers increase, it appears so does the pattern of seasonality.
+4) There do not appear to be any outliers and there are no missing values. Therefore no data cleaning is required.
+
+Additive vs Multiplicative seasonality
+https://kourentzes.com/forecasting/2014/11/09/additive-and-multiplicative-seasonality/
+
+
+Decomposing the ap time series
+```{r}
+decomposeAP_add <- stats::decompose(ap,"additive") # Yt = Tt + St + Rt
+autoplot(decomposeAP_add)
+```
+
+```{r}
+decomposeAP_mult <- decompose(ap,"multiplicative") # Yt = Tt * St * Rt
+autoplot(decomposeAP_mult)
+```
+
+Test stationarity of the time series (Augmented Dickey Fuller)
+```{r}
+tseries::adf.test(ap, alternative = "stationary", k=12) 
+#H0: the time series is non-stationary
+```
+
+Or Test stationarity of the time series (Using correlogram - ACF and PACF)
+```{r}
+autoplot(acf(ap,lag.max = 30, plot=FALSE))+ labs(title="ACF of Air Passengers from 1949 to 1960")
+
+autoplot(pacf(ap,lag.max = 30,plot=FALSE))+ labs(title="PACF of Air Passengers from 1949 to 1960")
+```
+
+Same plot as above
+```{r}
+acf(ap, lag.max = 30)
+pacf(ap, lag.max = 30)
+```
+
+```{r}
+library(tsm)
+```
+
+
+```{r}
+tsm::ac(dlap, max.lag=18)
+```
+
+# Statistical test for stationarity
+tseries::adf.test(ap)
+```{r}
+#Augmented Dickey Fuller Test
+# H0: time series data is NOT STATIONARY
+
+```
+## Check why adf.test shows ap data to be STATIONARY when it is not
+
+```{r}
+tseries::adf.test(ap)
+```
+
+#Using kpss test - Computes the Kwiatkowski-Phillips-Schmidt-Shin (KPSS) test for the null hypothesis that x is level or trend stationary.
+```{r}
+#H0: data is trend-stationary
+kpss.test(ap, null="Trend")
+
+kpss.test(ap, null="Level")
+```
+
+
+# How to make the time series STATIONARY
+
+If the time series is not stationary, we can often transform it to stationarity with one of the following techniques.
+
+1) If time series has trend, difference the data, i.e., given the series Z
+t, create the new series
+Zi=Zt - Zt-1. Thus,  Although you can difference the data more than once, one difference is usually sufficient.
+
+2) If the data contain a trend, we can fit some type of curve to the data and then model the residuals from that fit. Since the purpose of the fit is to simply remove long term trend, a simple fit, such as a straight line, is typically used.
+
+3) For non-constant variance, taking the logarithm or square root of the series may stabilize the variance. For negative data, you can add a suitable constant to make all the data positive before applying the transformation. This constant can then be subtracted from the model to obtain predicted (i.e., the fitted) values and forecasts for future points.
+
+The above techniques are intended to generate series with constant mean and variance. Although seasonality also violates stationarity, this is usually explicitly incorporated into the time series model.
+
+# ACF and PACF plots
+After a time series has been stationarized by differencing, the next step is to determine whether AR or MA terms are needed to correct any autocorrelation that remains in the differenced series. 
+
+By looking at the autocorrelation function (ACF) and partial autocorrelation (PACF) plots of the differenced series, you can tentatively identify the numbers of AR and/or MA terms that are needed. 
+
+# ACF plot: it is merely a bar chart of the coefficients of correlation between a time series and lags of itself. 
+# The PACF plot is a plot of the partial correlation coefficients between the series and lags of itself.
+
+# We use the PACF to determine an AR (Auto Regressive) process
+If the PACF of the differenced series displays a sharp cutoff and/or the lag-1 autocorrelation is positive--i.e., if the series appears slightly "underdifferenced"--then consider adding an AR term to the model. The lag at which the PACF cuts off is the indicated number of AR terms.
+
+# We use the ACF to determine an MA (Moving Average) process
+If the ACF of the differenced series displays a sharp cutoff and/or the lag-1 autocorrelation is negative--i.e., if the series appears slightly "overdifferenced"--then consider adding an MA term to the model. The lag at which the ACF cuts off is the indicated number of MA terms.
+
+
+```{r}
+?stats::arima.sim
+```
+
+
+```{r}
+set.seed(123)
+a1 <- arima.sim(model = list(ar = 0.8), n = 1000)
+head(a1, 20)
+
+plot.ts(a1)
+```
+
+```{r}
+tsm::ac(a1, max.lag = 18)
+```
+
+```{r}
+arma10 <- arima(a1, order = c(1, 0, 0), include.mean = FALSE)  # uses ARIMA(p,d,q) specification
+arma10
+```
+
+```{r}
+auto.arima(a1, trace = T)
+```
+
+#auto.arima(a1)
+Our model is
+ap(t) = 0.7783*ap(t-1) + et
+```{r}
+names(arma10)
+arma10$coef
+```
+
+```{r}
+View(arma10$residuals)
+plot(arma10$residuals)
+```
+
+```{r}
+ac(arma10$residuals, max.lag = 18)
+
+```
+
+Model the residuals
+```{r}
+res_arma10 <- arma10$residuals
+auto.arima(res_arma10, trace = TRUE)
+```
+
+
+#res_arma10 <- arma10$residuals
+#auto.arima(res_arma10, trace = TRUE)
+
+What if we modelled a1 as ARMA(0,1)?
+```{r}
+arma10x <- arima(a1, order = c(0, 0, 1), include.mean = FALSE)
+arma10x
+
+ac(arma10x$residuals, max.lag = 18)
+
+auto.arima(arma10x$residuals, trace = T)
+```
+
+
+```{r}
+set.seed(123)
+m1 <- arima.sim(model = list(ma = 0.6), n = 1000)
+#View(m1)
+
+plot.ts(m1)
+ac(m1, max.lag = 18)
+```
+
+
+
+```{r}
+arma01 <- arima(m1, order = c(0, 0, 1), include.mean = FALSE)  # uses ARIMA(p,d,q) specification
+arma01
+# m1(t) = et - 0.5838*e(t-1)
+```
+
+
+
+```{r}
+plot(arma01$residuals)
+```
+
+```{r}
+ac(arma01$residuals, max.lag = 18)
+```
+
+
+What if we modelled the ma1 process as ar1?
+```{r}
+x <- arima(m1, order = c(1, 0, 0), include.mean = FALSE)  # uses ARIMA(p,d,q) specification
+x
+```
+# Compare AIC
+
+```{r}
+ac(x$residuals, max.lag = 18)
+```
+# There are still significant lags
+
+```{r}
+set.seed(1234)
+arma11 <- arima.sim(model = list(ar = 0.4, ma = 0.5), n = 1000)  ## ARMA(1,1)
+plot.ts(arma11)
+ac(arma11, max.lag = 20)
+```
+
+```{r}
+auto.arima(arma11, trace = T)
+```
+
+#### arma11(t) = 1.3409*arma11(t-1) + -0.3691*arma11(t-2) + et -0.4133*e(t-1) - 0.5178*e(t-2)
+
+#Additional codes - Simulate ARMA(2,2) model
+
+
+#set.seed(123)
+#x1 <- arima.sim(model = list(ar = c(0.4, 0.1), ma = c(0.5, 0.2)), n = 1000) 
+#plot.ts(x1)
+
+#arma22 <- arima(x1, order = c(2, 0, 2), include.mean = FALSE)
+#arma22
+#auto.arima(x1, trace = TRUE)
+
+
+
+
+# To demonstrate ACF and PACF for an AR(p) process 
+ACF shows gradual decay
+PACF shows significant spike at lag p
+
+```{r}
+set.seed(123)
+## the 4 AR coefficients
+ARp <- c(0.7, 0.2, -0.1, -0.3)
+## empty list for storing models
+AR.mods <- list()
+## loop over orders of p
+for (p in 1:4) {
+    AR.mods[[p]] <- arima.sim(n = 10000, list(ar = ARp[1:p], sd = 1))
+}
+```
+
+
+Now that we have our four AR(p) models, lets look at plots of the time series, ACF's, and PACF's.
+Best to run this in the CONSOLE.
+
+```{r}
+## set up plot region
+par(mfrow = c(4, 3))
+## loop over orders of p
+for (p in 1:4) {
+    plot.ts(AR.mods[[p]][1:50], ylab = paste("AR(", p, ")", sep = ""))
+    acf(AR.mods[[p]], lag.max = 12)
+    pacf(AR.mods[[p]], lag.max = 12, ylab = "PACF")
+}
+```
+
+# To demonstrate ACF and PACF for an MA(q) process:
+ACF spike at significant lag
+PACF shows gradual decay
+
+
+# NOTE: If I replaced the first lag with 0.9, it still run. WHy?
+
+```{r}
+set.seed(123)
+## the 4 MA coefficients
+MAq <- c(0.7, 0.2, -0.1, -0.3)
+## empty list for storing models
+MA.mods <- list()
+## loop over orders of q
+for (q in 1:4) {
+    ## assume SD=1, so not specified
+    MA.mods[[q]] <- arima.sim(n = 1000, list(ma = MAq[1:q]))
+}
+```
+
+Now that we have our four MA(q) models, lets look at plots of the time series, ACF's, and PACF's.
+BEST TO RUN THIS CODE IN THE CONSOLE
+
+```{r}
+## set up plot region
+par(mfrow = c(4, 3))
+## loop over orders of q
+for (q in 1:4) {
+    plot.ts(MA.mods[[q]][1:50], ylab = paste("MA(", q, ")", sep = ""))
+    acf(MA.mods[[q]], lag.max = 12)
+    pacf(MA.mods[[q]], lag.max = 12, ylab = "PACF")
+}
+```
+
+# ARIMA(p,d,q)(P,D,Q)[S]- Auto regressive Integrated Moving Average
+ARIMA models are, in theory, the most general class of models for forecasting a time series which can be made to be "stationary" by differencing (if necessary), perhaps in conjunction with nonlinear transformations such as logging or deflating (if necessary). 
+
+As mentioned above, a time series is stationary if its statistical properties are all constant over time, it has no trend, its variations around its mean have a constant amplitude, and it wiggles in a consistent fashion., i.e., its short-term random time patterns always look the same in a statistical sense.  
+
+The ARIMA forecasting equation for a stationary time series is a linear (i.e., regression-type) equation in which the predictors consist of lags of the dependent variable and/or lags of the forecast errors.
+
+The acronym ARIMA stands for Auto-Regressive Integrated Moving Average. Lags of the stationarized series in the forecasting equation are called "autoregressive" terms, lags of the forecast errors are called "moving average" terms, and a time series which needs to be differenced to be made stationary is said to be an "integrated" version of a stationary series. Random-walk and random-trend models, autoregressive models, and exponential smoothing models are all special cases of ARIMA models.
+
+A nonseasonal ARIMA model is classified as an "ARIMA(p,d,q)" model, where:
+
+p is the number of autoregressive terms # relationship of the variable with its past values
+d is the number of nonseasonal differences needed for stationarity
+q is the number of lagged forecast errors in the prediction equation # relationship with its error terms
+
+The forecasting equation is constructed as follows.  First, let y denote the dth difference of Y, which means:
+
+# Differencing
+If d=0:  yt  =  Yt
+If d=1:  yt  =  Yt - Yt-1  #First difference
+If d=2:  yt  =  (Yt - Yt-1) - (Yt-1 - Yt-2)  =  Yt - 2Yt-1 + Yt-2  #Second difference
+
+Note that the second difference of Y (the d=2 case) is not the difference from 2 periods ago.  Rather, it is the first-difference-of-the-first difference, which is the discrete analog of a second derivative, i.e., the local acceleration of the series rather than its local trend.
+
+In terms of y, the general forecasting equation is:
+
+ARMA(p,q)
+yt   =   *a0 + a1 yt-1 + a2 yt-2 + a3 yt-3 + .. .+ ap yt-p - b1 et-1 - b2 et-2 - ...- bq et-q*
+
+
+Here the moving average parameters (b's) are defined so that their signs are negative in the equation, following the convention introduced by Box and Jenkins.  Some authors and software (including the R programming language) define them so that they have plus signs instead.  When actual numbers are plugged into the equation, there is no ambiguity, but it's important to know which convention your software uses when you are reading the output.  The parameters are denoted there by AR(1), AR(2), MA(1), MA(2), etc.
+
+# General form: ARIMA(p, d, q)
+
+AR(1) = ARIMA(1,0,0) = ARMA(1,0): yt = a0 + a1 yt-1 + et # AR(1) process a mean a0, plus a lag one of its own value, a1 yt-1
+AR(2) = ARIMA(2,0,0) = ARMA(2,0): yt = a0 + a1 yt-1 + a2 yt-2 + et
+AR(3) = ARIMA(3,0,0) = ARMA(3,0): yt = a0 + a1 yt-1 + a2 yt-2 + a3 yt-3 + et
+AR(p) = ARIMA(p,0,0) = ARMA(p,0): yt = a0 + a1 yt-1 + a2 yt-2 + ...+ ap yt-p + et
+
+MA(1) = ARIMA(0,0,1) = ARMA(0,1): yt =  et - b1 et-1 # An MA process consists of lag one of its error term
+MA(2) = ARIMA(0,0,2) = ARMA(0,2): yt =  et - b11 et-1 - b2 et-2
+MA(3) = ARIMA(0,0,3) = ARMA(0,3): yt =  et - b1 et-1 - b2 et-2 - b3 et-3
+MA(q) = ARIMA(0,0,q) = ARMA(0,q): yt =  et - b1 et-1 - b2 et-2 - ... - bq et-q
+
+ARIMA(1,0,1) = ARMA(1,1): yt = a0 + a1 yt-1 - b1 et-1 #An ARMA(1,1) consists of a lag one of its own value and error term
+ARIMA(2,0,1) = ARMA(2,1): yt = a0 + a1 yt-1 + a2 yt-2 - b1 et-1
+ARIMA(2,0,2) = ARMA(2,2): yt = a0 + a1 yt-1 + a2 yt-2 - b1 et-1- b2 et-2
+
+*ARIMA(1,1,1)*: dyt = a0 + a1 dyt-1 - b1 et-1,the number 1 in the middle signifies that the series was subjected to a "first differencing first"
+zi = zt - zt-1
+zt = a0 + a1 zt-1 - b1 et-1
+
+
+Early methods of determining ARIMA model: Plot Autocorrelation and Partial autocorrelation plots to determine which ARIMA model is fit for the time series. Nowadays, software packages can automatically give the "best" model.
+
+# How does an AR(1) and an MA(1) process look like? 
+
+# Simulating 500 observations from an AR(1) and an MA(1) process
+For AR(1) and MA(1):  -1 <a1 < 1; and -1 < b1 < 1
+AR(1):  yt = a0 + a1 yt-1  + et
+Ma(1):  yt = a0 + et - b1 et-1
+The coefficients of the AR(1) and MA(1) can't be greater  1 and less than -1.
+
+```{r}
+m <- 1
+set.seed(1234)
+ar1.small <- arima.sim(n = 500, model = list(ar = c(0.1), sd=1)) + m  # small coeff = 0.1
+plot.ts(ar1.small)
+```
+
+Added:
+```{r}
+ac(ar1.small, max.lag = 18)
+auto.arima(ar1.small, trace  = T)
+```
+
+# Relationship between an AR(1) and and MA(1)?
+
+# Forecast AR(1) model based on simulated values above
+```{r}
+forecast::Arima(ar1.small, order = c(1, 0, 0), include.constant = TRUE)
+```
+
+```{r}
+m <- 1
+set.seed(1234)
+ar1.large <- arima.sim(n = 500, model = list(ar = c(0.9), sd = 0.1)) + m  # small coeff = 0.1
+plot(ar1.large)
+# Forecast AR(1) model based on simulated values above
+forecast::Arima(ar1.large, order = c(1, 0, 0), include.constant = TRUE)
+auto.arima(ar1.large, trace =T)
+```
+
+```{r}
+dar1.large <- diff(ar1.large)
+plot(dar1.large)
+ac(dar1.large, max.lag = 18)
+auto.arima(dar1.large, trace = T)
+```
+
+
+What happens if the coefficient is > 1?
+```{r}
+ar1x <- arima.sim(n = 50, model = list(ar = c(1.01), sd = 0.1)) + m 
+```
+
+Note: If a1 = 1, then it becomes a random walk (special kind of non-stationary)
+```{r}
+set.seed(123)
+ar11 <- arima.sim(n = 50, model = list(ar = c(1.00), sd = 0.1)) + m 
+```
+
+
+# Simulating 500 observations from an AR(2)  and MA(2) process
+```{r}
+# AR(2) process
+set.seed(999)
+m <- 1
+AR2.sim<-arima.sim(model=list(ar=c(.9,-.2)),n=500) # ??1 =0.9, ??1= -0.2
+plot(AR2.sim)
+forecast::Arima(AR2.sim, order = c(2, 0, 0), include.constant = TRUE)
+
+# MA(2) process
+set.seed(111)
+MA2.sim<-arima.sim(model=list(ma=c(-.7,.1)),n=500)
+plot(MA2.sim)
+forecast::Arima(MA2.sim, order = c(0, 0, 2), include.constant = TRUE)
+```
+
+# Simulate 500 observations from an ARMA(2,2) Process
+```{r}
+set.seed(123)
+ARMA22.sim<-arima.sim(model=list(ar=c(.9,-.2),ma=c(-.7,.1)),n=500)
+plot(ARMA22.sim)
+forecast::Arima(ARMA22.sim, order = c(2, 0, 2), include.constant = TRUE)
+```
+
+-----------------------------------------------------------------------------------------------
+dply and data wrangling 
+
+
+# DATA WRANGLING IN R
+
+## Install packages - tidyverse, dplyr, ggplot2, nycflights13
+
+## the dplyr package for data wrangling (transforming) 
+Example functions: 
+1. **filter()** a data frame's existing rows to only pick out a subset of them. 
+2. **summarize()** one or more of its columns/variables with a summary statistic. 
+3. **group_by()** its rows, i.e. assign different rows to be part of the same group. We can then combine group_by() with summarize() to report summary statistics for each group separately. 
+4. **select** columns to generate a data set with only the variables/columns needed
+5. **mutate()** its existing columns/variables to create new ones. 
+6. **arrange()** its rows. 
+7. **join()** it with another data frame by matching along a "key" variable. In other words, merge these two data frames together.
+
+##Importance of dplyr package for data wrangling
+Similar to the database querying language SQL (pronounced "sequel" or spelled out as "S", "Q", "L"). SQL (which stands for "Structured Query Language"). It is used to manage large databases quickly and efficiently and is widely used by many institutions with a lot of data.
+
+## The pipe operator: %>% or |>
+The pipe operator, %>% or |>, is used to combine multiple operations in R into a single sequential chain of actions.
+
+You can use other operators beyond just the == operator that tests for equality:
+
+> corresponds to "greater than"
+< corresponds to "less than"
+>= corresponds to "greater than or equal to"
+<= corresponds to "less than or equal to"
+!= corresponds to "not equal to." 
+The ! is used in many programming languages to indicate "not." You can combine multiple criteria using operators that make comparisons:
+| corresponds to "or"
+& corresponds to "and"
+
+## Load flights data set
+
+
+## Describe the flights data set
+
+
+# THe FILTER function
+Filter() should often be among the first verbs to consider to apply to a data. This cleans a dataset to only those rows one cares about. It narrows down the scope of a data frame to just the observations needed.
+
+1) Create object alaska_flights object by to include only those carrier variables coming from alasks ("AS")
+
+2) Create an object portland_flights to include all flights with destination to Portland "PDX" 
+
+3) Create object btv_sea_flights_fall
+* departed from JFK
+* heading to Burlington, Vermont ("BTV") or Seattle, Washington ("SEA")
+* departed in the months of October, November, or December. 
+
+
+3a) Alternative way: Skip the use of "&" and just separate our conditions with a comma
+
+
+4) Create object not_BTV_SEA for flights that didn't go to Burlington, VT or Seattle, WA. (Hint: Use of ! for not)
+
+
+*4a) NOTE: Where was the ! placed in relation to the OR (|) operator?  What would be the result if this was not done? Write the code below
+
+
+
+5) An alternative: What's another way using the "not" operator ! to filter only the rows that are not going to Burlington, VT nor Seattle, WA in the flights data frame? 
+
+
+5b) Or another way
+
+
+Compared to the previous one, Why will this not work?
+```{r}
+not_BTV_SEA3 <- flights %>% 
+  filter(dest != "BTV" | dest != "SEA")
+```
+
+6) Create an object many_airports to filter destination to "SEA", "SFO", "PDX", "BTV", and "BDL" (Use the | (or) operator)
+
+
+6a) Note: Progressively including many items can get unwieldy to write. Shorter approach - use the %in% operator along with the c() function. 
+This approach takes much less energy to code. 
+
+
+The %in% operator is useful for looking for matches common in one vector/variable compared to another.
+
+# SUMMARIZE function 
+A common task when working with data frames is to compute summary statistics. Summary statistics are single numerical values that summarize a large number of values, such as sum, min, mean, median, max, sd, variance,etc
+
+## Load the weather data set (from nycflights13 package)
+## Describe the weather data set
+
+```{r}
+diagnose_web_report(weather)
+diagnose_paged_report(flights)
+```
+
+
+7) Create an object summary _temp containing the mean and standard deviation of temperature variable in the weather data frame. What's wrong with the code below?
+```{r}
+summary_temp <- weather %>% 
+  summarize(mean = mean(temp), std_dev = sd(temp))
+summary_temp
+```
+
+NA is how R encodes missing values where NA indicates "not available" or "not applicable." If a value for a particular row and a particular column does not exist, NA is stored instead. 
+
+Values can be missing for many reasons. Perhaps the data was collected but someone forgot to enter it, or the data was not collected at all because it was too difficult to do so, or there was an erroneous value that someone entered that has been corrected to read as missing
+
+7a) How do we work around this fact (Hint: na.rm argument)
+
+
+
+* FURTHER Note about Missing Values: Be cautious whenever ignoring missing values. This is in fact why the na.rm argument to any summary statistic function in R is set to FALSE by default. 
+* R does not ignore rows with missing values by default, rather it is alerting us to the presence of missing data and we should be mindful of this "missingnes"s" and any potential causes of this.
+
+8) Use summarize to determine count of weather data
+
+
+
+What will the code below generate? Why is the output such?
+Hint: Run the code line by line.
+```{r}
+summary_temp1 <- weather %>%   
+  summarize(mean = mean(temp, na.rm = TRUE)) %>% 
+  summarize(std_dev = sd(temp, na.rm = TRUE))
+```
+
+# GROUP_BY Function
+You can group rows into categories.
+Using the **temp** data from **weather**, we can get a single mean temperature for the whole year, or we can get the mean temperatures, one for each of the 12 months separately. 
+
+9) Create an object weather_group_by and describe the data
+
+
+10) Create object summary_temp and compute for average temperature and the standard deviation for the whole year
+
+
+11) Create object summary_monthly_temp with average temperature and standard deviation per month for the whole year
+
+
+NOTE: The addition of **extra group_by(month)** before the summarize() yields a data frame that displays the mean and standard deviation temperature split by the 12 months of the year.
+
+The group_by() function doesn't change data frames by itself. It only changes the meta-data, or data about the data, specifically the grouping structure. It is only after we apply the summarize() function that the data frame changes.
+
+
+### Another data set diamonds from ggplot2
+Load the data set diamonds and describe
+
+12) Group the diamonds data by the cut variable
+
+
+
+What new meta data do we have?
+Groups: cut [5] indicating that the grouping structure meta-data has been set based on the 5 possible levels of the categorical variable cut: "Fair", "Good", "Very Good", "Premium", and "Ideal". 
+Has the data has changed?
+
+Only by combining a group_by() with another data wrangling operation, like summarize(), will the data actually be transformed.
+
+13) Create object avg_price_cut by getting the average price per cut
+
+
+You can remove this grouping structure meta-data, we can pipe the resulting data frame into the ungroup() function:
+
+14) Remove the grouping. Will the group cut in the meta-data still be present?
+
+
+## Use of count function 
+The n() function counts rows. This is opposed to the sum() summary function that returns the sum of a numerical variable.
+
+15) Using flights data set, create count_by_origin object to show how many flights departed each of the three airports in NYC
+  
+
+
+## Grouping by more than one variable
+One can group by more than one variable. 
+
+16) Create object by_origin_monthly to determine the number of flights leaving each of the three NYC airports for each month. Hint: group_by(origin, month). Describe the output.
+
+
+17) Will the result be the same if we use group_by(origin) first and then pipe to group_by(month) next?
+
+
+
+NOTE: the second group_by(month) overwrote the grouping structure meta-data of the earlier group_by(origin), so that in the end we are only grouping by month. If you want to group_by() two or more variables, you should include all the variables at the same time in the same group_by() adding a comma between the variable names.
+
+Exercise1:
+
+What code would be required to get the mean and standard deviation temperature for each day in 2013 for NYC? Create an object called summary_temp_by_day
+
+
+Exercise2:
+Recreate by_monthly_origin, but instead of grouping via group_by(origin, month), group variables in a different order group_by(month, origin). What differs in the resulting dataset?
+
+
+Exercise 3:
+How could we identify how many flights left each of the three airports for each carrier?
+
+Exercise 4:
+How does the filter() operation differ from a group_by() followed by a summarize()?
+
+-----------------------------------------------------------------------------------------------
+
+
+
+mathmod, depress, moderation
+
+Steps for moderation analysis
+A moderation analysis typically consists of the following steps.
+
+1) Compute the interaction term XZ=X*Z.
+2) Fit a multiple regression model with X, Z, and XZ as predictors.
+3) Test whether the regression coefficient for XZ is significant or not.
+4) Interpret the moderation effect.
+5) Display the moderation effect graphically.
+
+## A factor variable as a MODERATOR
+```{r}
+mathmod <- read_csv("mathmod.csv", col_names = T)
+```
+
+```{r}
+#summary(mod1 <- lm(math ~ training + gender training::gender, data = mathmod)
+
+summary(mod1 <- lm(math ~ training*gender, data = mathmod))
+```
+
+The regression coefficient (0.504) for the interaction term (training::gender)  is significant at the alpha level 0.05 with a p-value < .001 there exists a significant moderation effect. Thus, the effect of training intensity on math performance significantly depends on gender.
+
+When Z=0 (male), the estimated effect of training intensity on math performance is β1 = −.34. 
+
+When Z=1 (female), the estimated effect of training intensity on math performance is β1 + β3 = −.34 + .50 = .16.
+
+The moderation analysis tells us that the effects of training intensity on math performance for males (-.34) and females (.16) are significantly different for this example.
+
+## Interaction plot
+
+A moderation effect indicates the regression slopes are different for different groups. If we plot the regression line for each group, they should interact at certain point. Such a plot is called an interaction plot. To get the plot, we first calculate the intercept and slope for each level of the moderator. For this example, we have
+
+$$\begin{eqnarray*} 
+Y & = & \beta_{0}+\beta_{1}*X+\beta_{2}*Z+\beta_{3}*X*Z \\ 
+  & = & 
+    \begin{cases} \beta_{0}+\beta_{1}*X& \mbox{For male students}(Z=0) \\
+                 \beta_{0}+\beta_{2}+(\beta_{1}+\beta_{3})*X& \mbox{For female students}(Z=1) \end{cases} \\ 
+  & = & \begin{cases} 4.99 - 0.34*X& \mbox{For male students}(Z=0)\\ 2.23 + 0.16*X& \mbox{For female students}(Z=1)\end{cases}\end{eqnarray*}$$
+  
+
+With the information, we can generate a plot. 
+In the function abline(), the first value is the intercept and the second is the slope. The values for each level can also be added to the plot.
+```{r}
+attach(mathmod)
+## create an empty frame
+plot(training, math, type='n') 
+## Regression line for male
+abline(4.99, -.34)
+## Regression line for female
+abline(2.23, .16, lty=2, col='red')
+
+legend('topright', c('Male', 'Female'), lty=c(1,2), 
+      col=c('black', 'red'))
+
+## add scatter plot
+points(training[gender==0], math[gender==0])
+points(training[gender==1], math[gender==1], col='red')
+detach(mathmod)
+```
+
+## A continuous variable as a MODERATOR
+
+The data set depress.csv includes three variables: Stress, Social support and Depression. We investigate whether social support is a moderator for the relation between stress and depression. Does the effect of stress on depression depend on different levels of social support? Here, the potential moderator social support is a continuous variable.
+```{r}
+depress <- read_csv("depress.csv", col_names = T)
+```
+
+```{r}
+depress$inter <- depress$stress*depress$support # add inter variable
+
+summary(lm(depress~stress+support+inter, data=depress))
+```
+
+The regression coefficient estimate of the interaction term is -.39 with t = -20.754, p <.001. Therefore, social support is a significant moderator for the relation between stress and depression. The relation between stress and depression significantly depends on different levels of social support.
+
+Since social support is a continuous variable, there is no immediate levels to look at the relationship between stress and depression. However, we can choose several difference levels. 
+
+One way is to use these three levels of a moderator: mean, one standard deviation below the mean and one standard deviation above the mean. 
+
+$$\begin{eqnarray*} \hat{depress} & = & 29.26+2.00*stress-.24*support-.39*stress*support\\ & = & \begin{cases} 28.65+1*stress & \;support=2.56\\ 27.97-.09*stress & \;support=5.37.\\ 27.30-1.19*stress & \;support=8.18 \end{cases} \end{eqnarray*}$$
+
+
+
+For this example, the three values for social support are 5.37, 2.56 and 8.18. The fitted regression lines for the three values are
+
+
+From it, we can clearly see that with more social support, the relationship between depression and stress becomes negative from positive. This can also be seen from the interaction plot below.
+
+```{r}
+## create an empty frame
+plot(depress$stress, depress$depress, type='n', 
+     xlab='Stress', ylab = 'Depression')
+     
+## abline(intercept value, linear slope value)
+# for support = mean -1SD
+abline(28.65, 1) 
+# for support = mean
+abline(27.97, -.09, col='blue') 
+# for support = mean +1SD
+abline(27.30, -1.19, col='red') 
+ 
+legend('topleft', c('Low', 'Medium', 'High'), 
+                   lty=c(1,1,1), 
+                   col=c('black','blue','red'))ession')
+
+```
+
+
+
+
+
+-------------------------------
+regression
+
+---
+title: "Introduction to Multiple Regression"
+author: "Bobby Baylon Jr."
+date: "Feb. 18, 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## What Is Multiple Linear Regression (MLR)? ## SIMPLE
+Multiple linear regression (MLR), also known simply as multiple regression, is a statistical technique that uses several explanatory variables (Independent variables, IVs) to predict the outcome of a response variable (dependent variable, DV). 
+
+The goal of multiple linear regression is to model the linear relationship between the explanatory variables and response variable. In essence, multiple regression is the extension of ordinary least-squares (OLS) regression because it involves more than one explanatory variable.
+
+## Formula and Calculation of Multiple Linear Regression ##
+https://rmd4sci.njtierney.com/math
+
+
+
+$$
+\begin{aligned}&y_i = \beta_0 + \beta _1 x_{i1} + \beta _2 x_{i2} + \beta _3 x_{i3} +  ... + \beta _n x_{in} + \epsilon_i
+
+\\&\textbf{where, for } i = n~\textbf{observations:}
+\\&y_i=\text{dependent variable}
+\\&x_i=\text{explanatory variables}
+\\&\beta_0=\text{y-intercept (constant term)}
+\\&\beta_n=\text{slope coefficients for each explanatory variable}
+\\&\epsilon_i=\text{the model's error term (also known as the residuals)}
+\end{aligned}
+$$
+
+LATEX
+
+# Regression assumptions - Linear regression makes several assumptions about the data
+
+1) Linearity of the data. The first assumption of Multiple Regression is that the relationship between the IVs and the DV can be characterised by a straight line. The relationship between the predictors (x1, x2, ..., xn) and the outcome (y) is assumed to be linear. A simple way to check this is by producing scatterplots of the relationship between each of our IVs and our DV.
+
+2) Linearity of the parameters. Assumption 2 requires the specified model to be linear in parameters, but it does not require the model to be linear in variables.
+
+In order for OLS to work the specified model has to be linear in parameters. Note that if the true relationship between $x_{1}$ and y is non linear it is not possible to estimate the coefficient $\beta$ in any meaningful way. Equation 1 shows an empirical model in which $\beta_{1}$ is of quadratic nature.
+
+$$
+\textbf {Equation 1}
+\\y_{i} = \beta_{0} + (\beta_{1})^{2}x_{i1} + \beta_{2}x_{i2} + ... + \beta_{N}x_{iN} + \epsilon_{i}
+$$
+
+Assumption 2 of CLRM requires the model to be linear in parameters. OLS is not able to estimate Equation 1 in any meaningful way. However, assumption 2 does not require the model to be linear in variables. OLS will produce a meaningful estimation of $\beta_{1}$ in Equation 2.
+
+$$ 
+\textbf {Equation 2}
+\\y_{i} = \beta_{0} + \beta_{1}(x_{i1})^{2} + \beta_{2}log(x_{i2}) + ... + \beta_{N}x_{iN} + \epsilon_{i}
+$$
+
+
+3) Homogeneity of residuals variance. This is called homoscedasticity (constant variance), and is the assumption that the variation in the residuals (or amount of error in the model) is similar at each point across the model. In other words, the spread of the residuals should be fairly constant at each point of the predictor variables (or across the linear model)
+
+4) Explanatory variables are not collinear (mulitcollinearity).
+This is essentially the assumption that the predictors are not too highly correlated with one another. Multicollinearity exists when two or more of the explanatory variables are highly correlated. This is a problem as it can be hard to disentangle which of them best explains any shared variance with the outcome variable. It also suggests that the two variables may actually represent the same underlying factor.
+
+5) Independence of residuals error terms.
+
+6) Normality of residuals - The residual errors are assumed to be normally distributed.
+
+References:
+https://www.albert.io/blog/key-assumptions-of-ols-econometrics-review/#:~:text=OLS%20Assumption%201%3A%20The%20linear,%E2%80%B2%20s%20X's%20X%E2%80%B2s.
+
+https://www.jmp.com/en_ph/statistics-knowledge-portal/what-is-multiple-regression.html
+
+## Least squares line
+
+1) The residual for the \[i^{th}\] observation is
+$$e_i = \text{observed} - \text{predicted} = y_i - \hat{y}_i$$
+$$e_i = observed_i - predicted_i = y_i - \hat{y}_i$$
+The sum of squared residuals is
+e21+e22+⋯+e2n
+
+The least squares line is the one that minimizes the sum of squared residuals
+
+
+## Properties of least squares regression
+1) The regression line goes through the center of mass point, the coordinates corresponding to average X
+and average Y:
+
+$$\hat{\beta}_0 = \bar{Y} - \hat{\beta}_1\bar{X}$$
+ 
+2) The slope has the same sign as the correlation coefficient:
+$$\hat{\beta}_1 = r \frac{s_Y}{s_X}$$
+3) The sum of the residuals is zero: 
+$$\sum_{i = 1}^n \epsilon_i = 0$$
+
+The residuals and X
+ values are uncorrelated
+
+## Install psych, pastecs, olsrr, stargazer
+
+```{r}
+library(pacman)
+
+pacman::p_load(tidyverse, psych, pastecs, olsrr, stargazer)
+```
+
+## Import wage
+
+```{r}
+wage <- readr::read_csv("wage.csv", col_names = TRUE)
+View(wage)
+```
+
+-----
+Examining the data
+```{r}
+str(wage)
+summary(wage)
+psych::describe(wage)
+```
+
+
+Performing descriptive statistics
+
+
+Plotting the data
+```{r}
+# Will this work?
+plot(educ, hrwage, main = "Scatterplot of hrwage and educ")
+
+plot(wage$educ, wage$hrwage, 
+     xlab = "Years of education",
+     ylab = "hrly wage",
+     main = "Scatterplot of hrwage and educ")
+```
+
+Correlation between hrwage and educ
+```{r}
+cor(wage$educ, wage$hrwage)
+```
+```{r}
+GGally::ggpairs(wage) 
+```
+
+
+
+## Simple regression
+?lm
+
+```{r}
+mod1 <- lm(hrwage ~ educ, data = wage)
+names(mod1)
+mod1$coefficients
+
+summary(mod1 <- lm(hrwage ~ educ, data = wage))
+
+```
+
+```{r}
+summary(mod1)
+```
+
+Equation of the model
+
+Interpretation of educ slope
+
+```{r}
+mod1$coefficients
+```
+
+
+$$
+\widehat{hrwage_i} = mod1$coefficients[1] + 
+$$
+
+
+$$
+Y = \begin{bmatrix} Y_1 \\ Y_2 \\ \vdots\\ Y_n \end{bmatrix}, \quad
+X = \begin{bmatrix}
+1      & x_{11}    & x_{12}    & \cdots & x_{1p} \\
+1      & x_{21}    & x_{22}    & \cdots & x_{2p} \\
+\vdots & \vdots    & \vdots    &  & \vdots \\
+1      & x_{n1}    & x_{n2}    & \cdots & x_{np} \\
+\end{bmatrix}, \quad
+\beta = \begin{bmatrix}
+\beta_0 \\
+\beta_1 \\
+\beta_2 \\
+\vdots \\
+\beta_{p} \\
+\end{bmatrix}, \quad
+\epsilon = \begin{bmatrix} \epsilon_1 \\ \epsilon_2 \\ \vdots\\ \epsilon_n \end{bmatrix}
+$$
+
+$$
+\begin{bmatrix}
+Y_1   \\
+Y_2   \\
+\vdots\\
+Y_n   \\
+\end{bmatrix}
+=
+\begin{bmatrix}
+1      & x_{11}    & x_{12}    & \cdots & x_{1p} \\
+1      & x_{21}    & x_{22}    & \cdots & x_{2p} \\
+\vdots & \vdots    & \vdots    &  & \vdots \\
+1      & x_{n1}    & x_{n2}    & \cdots & x_{np} \\
+\end{bmatrix}
+\begin{bmatrix}
+\beta_0 \\
+\beta_1 \\
+\beta_2 \\
+\vdots \\
+\beta_{p} \\
+\end{bmatrix}
++
+\begin{bmatrix}
+\epsilon_1   \\
+\epsilon_2   \\
+\vdots\\
+\epsilon_n   \\
+\end{bmatrix}
+$$
+$$
+\hat{\beta_i}= (X^\top X)^{-1} X^\top y
+$$
+
+$$
+\hat{\beta_i} = \left(  X^\top X  \right)^{-1}X^\top y\\
+\hat{\beta_i} = (X^\top X)^{-1}X^\top y
+$$
+
+```{r}
+(n = nrow(wage))
+p = length(coef(mod1)) # number of predictors
+X = cbind(rep(1, n), wage$educ); X
+y = wage$hrwage; y
+
+(beta_hat = solve(t(X) %*% X) %*% t(X) %*% y)
+```
+
+$$
+\hat{y} = X \hat{\beta}
+$$
+```{r}
+y_hat = X %*% solve(t(X) %*% X) %*% t(X) %*% y
+
+c <- cbind(y_hat, mod1$fitted.values); View(c)
+```
+
+$$
+e_i 
+= \begin{bmatrix} e_1 \\ e_2 \\ \vdots\\ e_n \end{bmatrix} 
+= \begin{bmatrix} y_1 \\ y_2 \\ \vdots\\ y_n \end{bmatrix} - \begin{bmatrix} \hat{y}_1 \\ \hat{y}_2 \\ \vdots\\ \hat{y}_n \end{bmatrix}
+$$
+
+```{r}
+e = y - y_hat
+c2 <- cbind(e, mod1$residuals); View(c2)
+```
+
+## Estimate for variance, σ^2
+
+$$
+s_e^2 = \frac{\sum_{i=1}^n (y_i - \hat{y}_i)^2}{n - p - 1} = \frac{e^\top e}{n-p-1}
+$$
+
+```{r}
+se <- sqrt(t(e) %*% e / (n - p))
+c3 <- cbind(se, summary(mod1)$sigma); View(c3)
+```
+
+```{r}
+sqrt(sum((y - y_hat) ^ 2) / (n - p))
+```
+
+
+## PERFORM DIAGNOSTICS
+
+
+
+Plotting the regression line
+
+
+
+Regression diagnostics:
+1) Residual analysis
+
+
+
+
+# Plot the residuals
+
+
+
+
+# Plot the residuals - Regression diagnostics plots can be created using the R base function plot() or the autoplot() function [ggfortify package], which creates a ggplot2-based graphics.
+
+
+
+
+
+The diagnostic plots show residuals in four different ways:
+
+1) Residuals vs Fitted. Used to check the linear relationship assumptions. A horizontal line, without distinct patterns is an indication for a linear relationship, what is good.
+
+2) Normal Q-Q. Used to examine whether the residuals are normally distributed. It's good if residuals points follow the straight dashed line.
+
+3) Scale-Location (or Spread-Location). Used to check the homogeneity of variance of the residuals (homoscedasticity). Horizontal line with equally spread points is a good indication of homoscedasticity. This is not the case in our example, where we have a heteroscedasticity problem.
+
+4) Residuals vs Leverage. Used to identify influential cases, that is extreme values that might influence the regression results when included or excluded from the analysis. 
+
+
+## Multiple regression
+Note we have character variables in our data
+
+```{r}
+
+summary(mod2 <- lm(hrwage ~ educ + exper + tenure + race + gender + civstatus + numdep, data = wage))
+
+summary(mod2 <- lm(hrwage ~ ., data = wage))
+```
+
+
+
+## Check correlation among explanatory variables
+
+
+```{r}
+yi <- wage$hrwage
+ymean <- mean(wage$hrwage)
+yhat <- mod2$fitted.values
+
+
+```
+
+
+```{r}
+#SST - sum of the squares total = yi - ymean
+sst <- sum((yi - ymean)^2); sst
+
+#SSR - sum of the squares of the regression = sum((yhat - ymean)^2)
+ssr <- sum((yhat - ymean)^2); ssr
+
+#SSE - sum of te squares of residuals (errors) = sum((yi - yhat)^2)
+#EXPLAINED VARIANCE
+sse <- sum((yi - yhat)^2); sse
+
+sse1 <- sst-ssr
+
+#Rsquared = ssr / sst 
+R2 <- ssr/sst; r2
+
+
+#adjR2; 1 - (1 - r2) * (n-1) / (n-k-1)
+adjR2 <- 1- (1 -R2) * (nrow(wage)-1)/(nrow(wage)-(ncol(wage)-1)-1); adjR2
+
+
+
+
+```
+
+
+```{r}
+#similar to the last equation above but simpler
+# the more predictors the worse your model, parsimony 
+
+df2 <- nrow(wage)-(ncol(wage)-1)-1; df2
+adjR2 <- 1 - (1-R2)*(nrow(wage)-1)/df2; adjR2
+
+
+
+```
+
+```{r}
+#mod1 = SLR, mod2 = MLR
+#AIC is a measure of information loss
+
+AIC(mod1); AIC(mod2)
+BIC(mod1); BIC(mod2)
+#measures the same thing as AIC
+
+
+```
+In terms of adjR2, mod2 > mod1l mod2 is better
+in terms of aic and bic: mod2 < mod1 for both, thus mod2 is better
+
+#anova test
+```{r}
+#Restricted model is with lesser number of predictors or model 1 
+#Unrestricted model is with more predictors or model 2
+anova(mod1, mod2) # H0: Restricted model (mod1) is better than the Unrestricted 
+
+
+
+```
+
+
+
+
+#LEAVING VARIABLE     - VARIABLE WTH THE LOWEST ABSOLUTE VALUE t-value = race
+```{r}
+#remove race
+summary(mod3 <- lm(hrwage ~ educ + exper + tenure + gender + civstatus + numdep, data = wage))
+
+```
+
+
+#Mod 2 and Mod3 comparison 
+```{r}
+ 
+AIC(mod2); AIC(mod3)
+BIC(mod2); BIC(mod3)
+
+```
+
+
+```{r}
+
+anova(mod2,mod3) #H0: Restricted model (mod3) is better
+
+```
+#Three types of regression, stepwise regression, background regression, and forward regression
+
+
+#This is step wise backward regression (load all variables and remove)
+#Leaving Variable is numdep
+```{r}
+
+summary(mod4 <- lm(hrwage ~ educ + exper + tenure + gender + civstatus, data = wage))
+
+
+
+```
+
+
+
+
+
+```{r}
+AIC(mod3); AIC(mod4)
+BIC(mod3); BIC(mod4)
+
+```
+
+```{r}
+#Always go back to null hypthoses
+#We are always testing which is better in terms of number of variables
+#We eliminate until we get higher pvalue or significant variables
+anova(mod4, mod3) #H0: Restricted (mod4) is better
+
+```
+
+
+#Leaving Variable - experience (since its not significant per last anova)
+```{r}
+
+summary(mod5 <- lm(hrwage ~ educ + tenure + gender + civstatus, data = wage))
+
+
+```
+
+#After regression model. all variables are significant (*)
+
+__________________________________________________________________________
+
+```{r}
+AIC(mod4); AIC(mod5)
+BIC(mod4); BIC(mod5)
+
+```
+
+
+
+```{r}
+anova(mod4,mod5) #H0: Restricted model (mod5) is better
+
+
+```
+Mod5 is better than Mod4
+However we wont do stepwise regression since there are no more insignificant variables
+
+
+_________________________________________________________________________
+
+
+```{r}
+
+plot(mod5, 1)
+plot(mod5, 2)
+plot(mod5, 3)
+plot(mod5, 4)
+plot(mod5, 5)
+
+par(mfrow = c(2,2))
+plot(mod5)
+
+
+```
+
+
+
+```{r}
+
+pacman::p_load(olsrr)
+
+```
+
+
+Model10 = linear model (complete model, all var)
+```{r}
+mod10 <- lm(hrwage ~., data = wage)
+```
+
+```{r}
+olsrr::ols_step_backward_p(mod10, prem = 0.05, details = T)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+https://cran.r-project.org/web/packages/equatiomatic/vignettes/intro-equatiomatic.html
+
+
+
+
+Compare mod1 (SLR) and mod2 (MLR)
+
+
+
+# Creating mod3 - Leaving variable (lowest absolute t-value) - 
+
+
+
+# How does mod3 compare with mod2 in terms of R2adj, se, AIC
+
+
+# Create mod4. What is the leaving variable?
+
+
+# Is there a need to create a mod5? What is the final model?
+
+
+# Regression Diagnostics with the final model
+
+1) Residual analysis
+
+
+
+2) Multicollinearity
+
+
+
+
+
+STEPWISE REGRESSION
+
+Method 1.1: Forward regression using p-values
+
+
+#Short cut if all IVs are included
+
+
+#This gives you the short summary of the models at each step 
+
+
+-------------------
+Method 1.1: Forward regression using AIC
+
+ 
+#This gives you the short summary of the models at each step
+
+
+#This plots out the relative contributions of the predictors
+
+
+#if you want the intermediate steps, add set 'details' argument = TRUE
+
+
+-------------------
+## Backward regression using p-values
+  
+
+-------------------
+## Backward regression using aic
+
+
+# Plot of model
+  
+#if you want the intermediate steps, add set 'details' argument = TRUE
+
+
+-------------------
+## Stepwise regression using p-values
+
+-------------------
+## Stepwise regression using aic
+
+
+# Plot of Bothfit
+
+
+# Intermediate steps in stepwise regression
+
+
+-------------------
+## All possible subsets regression 
+
+
+
+# Can convert to data frame to be seen
+
+#to obtain plots of Mallow's C and other indices
+
+-------------------
+# The all possible model gives us ALL possible regression models.
+If you have many regressors, you will take 2^k-1 models (k = number of regressor)
+Best subsets regression as an option
+
+
+
+#Plot of best subset
+
+References
+Summarize and compare regression models
+https://cran.r-project.org/web/packages/jtools/vignettes/summ.html
+
+Final Fit - elegant final results tables and plot in R
+https://www.datasurg.net/2018/05/16/elegant-regression-results-tables-and-plots-the-finalfit-package/
+
+Diagnostics
+http://www.sthda.com/english/articles/39-regression-model-diagnostics/161-linear-regression-assumptions-and-diagnostics-in-r-essentials/
+
+https://sphweb.bumc.bu.edu/otlt/MPH-Modules/BS/R/R5_Correlation-Regression/R5_Correlation-Regression7.html
+
+
+https://www.statmethods.net/stats/rdiagnostics.html  (Regression diagnostics - Quick R)
+
+
+https://ademos.people.uic.edu/Chapter12.html # Good reference
+
+https://bookdown.org/ripberjt/qrmbook/the-art-of-regression-diagnostics.html
+
+
+
+
+
+
+
+------------------------------------------------------------------------
+
+# Introduction to RMarkdown
+
+R Markdown combines markdown (an easy to write plain text format) with embedded R code chunks. When compiling R Markdown documents, the code components can be evaluated so that both the code and its output can be included in the final document. This makes analysis reports highly reproducible by allowing to automatically regenerate them when the underlying R code or data changes. R Markdown documents (`.Rmd` files) can be rendered to various formats including HTML and PDF. The R code in an `.Rmd` document is processed by `knitr`, while the resulting `.md` file is rendered by `pandoc` to the final output formats (_e.g._ HTML or PDF). Historically, R Markdown is an extension of the older
+`Sweave/Latex` environment. Rendering of mathematical expressions and reference management is also supported by R Markdown using embedded Latex syntax and Bibtex, respectively.
+
+# Data Classes, Data Structures
+Important to have strong understanding of the basic data types and data structures and how to operate on them. Everything in R is an object. Hence, when we talk about data types in R we refer to the simplest data objects we can handle, that are also known as R atomic data types.
+ 
+## DATA CLASSES ----
+
+```{r}
+# NUMERIC (real or decimal; double)
+# INTEGER; stands for long integer; tells R to store as such
+# CHARACTER - You can use ' ' for a single character
+# CHARACTER - You can use ' 'or " " for a string
+# LOGICAL
+# COMPLEX
+# RAW - holds raw bytes, so it is a very unusual data type (charToRaw; RawToChar)
+```
+
+Others - DATE (TIME, very important in finance)
+
+## Assigning names to objects
+```{r}
+# Assign value 1 to "a
+# Print "a"
+# What is the class of a?
+# What is the type of a?
+```
+
+```{r}
+# Assing integer 3 to b and print
+# What is the class of b?
+```
+
+
+## INTRODUCTION TO DATA STRUCTURES ----
+Data types may be combined to form data structures,such as atomic vectors (holds only holds data of a single data type). R provides many functions to examine features of objects
+
+## DIAGNOSTIC FUNCTIONS IN R
+------------
+class() - what kind of object is it (high-level)?
+typeof() - what is the object's data type (low-level)?
+mode() - type or storage mode of an object
+storage.mode()- type or storage mode of an object
+str() - structure of an object
+------------
+
+NOTE: The main use of some of them is not to just check the data type of an R object. For instance, the class of an R object can be different from the data type (which is very useful when creating S3 classes) and the str function is designed to show the full structure of an object. If you want to print the R data type, we recommend using the typeof function.
+
+## Other related functions
+----------
+names()  - lists the elements of an object
+length() - how long is it? What about two dimensional objects?
+attributes() - does it have any metadata?
+dim() - set of dimension of an object
+----------
+
+## DATA STRUCTURE types:
+Vectors, Lists, Matrices, Arrays, Factors, Data Frames
+
+###################
+# STRUCTURE TYPE 1#
+###################
+
+### VECTOR - Vector is a basic data structure in R
+A vector is ATOMIC (only one data type), as distinguished from a LIST (more than one).It contains element of the same type (logical, integer, double, character, complex or raw). 
+
+### NUMERIC VECTOR - set of data that are all numbers
+```{r}
+a1 <- 5
+(nums <- c(1.1, 3, -5.7)) # combine or concatenate
+class(nums)
+```
+
+
+### Generate some random numbers 
+?rnorm
+help(rnorm)
+```{r}
+ # how to generate the same random values
+ # create object devs with ND random numbers with mean=0, sd= 1
+ # View the object
+ # What is the  mean and standard deviation of devs?
+ # Generate 5 Number summary and mean
+ # Plot the histogram 
+```
+
+
+```{r}
+ # class of the object devs
+# length of the object devs
+# mode of the object devs
+# typeof of the object devs
+# structure of the object devs
+```
+
+
+```{r}
+# Generate 10000 observations - devs2 with mean = 90 and sd = 5
+# Check the mean, sd, summary
+```
+
+## 
+```{r}
+(g <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+(g1 = 1:10)
+class(g); class(g1)
+typeof(g); typeof(g1) 
+length(g)
+```
+
+
+### INTEGER VECTORS - to force R to treat as integer, include "L"
+```{r}
+(k <- c(1L, 2L,3L, 4L, 5L))
+class(k)
+typeof(k)
+```
+
+
+```{r}
+(m <- c(1, 2, 3, 4, 5))
+class(m)
+typeof(m)
+
+(n <- as.integer(m))  # This is called implicit coercion
+(class(n))
+(typeof(n))
+```
+
+
+```{r}
+# Can we convert char to integers
+(let <- c("a","b","c","d","e"))
+(class(let))
+(typeof(let))
+(let1 <- as.integer(let))
+```
+
+Coercion rule goes:
+A vector can only be composed of one data type. This means that you cannot have both a numeric and a character in the same vector. If you attempt to do this, the lower ranking type will be coerced into the higher ranking type.
+########################################################
+#logical -> integer -> numeric -> complex -> character #
+########################################################
+
+```{r}
+(w <- 0:6); class(w)
+(w1 <- c(0,1,2,3,4,5,6)); class(w1)
+
+as.numeric(w); class(w) # what happens?
+w
+
+(w <- 0:6); class(w)
+as.logical(w) # why?
+
+(w <- 0:6); class(w)
+as.character(w)
+
+(w <- 0:6); class(w)
+as.complex(w); class(w)
+
+# what is this?
+int <- sample(ints, 100, replace = TRUE) #for clarification
+```
+
+
+```{r}
+g <- c(1:1000)
+g
+
+set.seed(99)
+g1 <- sample(g, 50, replace = TRUE); print(g1)
+class(g1)
+typeof(g1)
+```
+
+
+###  CHARACTER VECTORS - char stings must be in quotes
+```{r}
+(i <- c(Mon, Tue, Wed, Thur, Fri)) 
+(i <- c("Mon", "Tue", "Wed", "Thur", "Fri"))
+(typeof(i))
+(length(i))
+```
+
+
+```{r}
+(x <- c(1L, 5.4, TRUE, "hello"))
+(typeof(x))
+```
+
+
+### LOGICAL VECTOR - # logical must be in capitals
+```{r}
+(j <- c(false, true))
+
+(j <- c(FALSE, TRUE, TRUE, FALSE, FALSE)) 
+typeof(j)
+
+(j1 <- c(F, F, F, T, T))  # but can be abbreviated
+```
+
+
+### OPERATIONS CAN BE PERFORMED ON VECTORS - use of : is treated as integer
+```{r}
+(numbers <- c(1:10))
+(class(numbers))
+(typeof(numbers))
+```
+
+
+### use of identifying each data is treated as numeric
+```{r}
+(numbers1 <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+(class(numbers1))
+(typeof(numbers1))
+```
+
+```{r}
+(numbers + 2) 
+(numbers * sqrt(10))
+(numbers + numbers1) 
+(numbers2 <- c(1:6))
+numbers + numbers2
+
+(numbers3 <- c(1:5))
+numbers + numbers3
+```
+
+
+### You can also create a vector using seq() function
+?seq() #Note that in Rmd this will not run if not inside a R code box
+
+```{r}
+(seq(from = 1, to = 3, by=0.2)) # specify step size
+(seq(1, 5, length.out=4))      # specify length of the vector
+```
+
+
+### We can modify a vector using the assignment operator
+```{r}
+q <- c(-3, -2, -1,  0, 1,  2); q; class(q)
+q[2] <- 0; q        # modify 2nd element
+```
+
+### We can delete a vector by simply assigning a NULL to it
+```{r}
+(q <- NULL)
+```
+
+## SUBSETTING VECTORS ----
+```{r}
+(days <- c("Mon", "Tue", "Wed", "Thur", "Fri"))
+days[1]
+days[4]
+days[c(1,3,4)]
+days[1:4]
+days[-5]
+days[-c(1,3,4)]
+```
+
+###################
+# STRUCTURE TYPE 2#
+###################
+
+# LIST -  list is an R structure that may contain object of any other types, including other lists
+```{r}
+(list1 <- list(1, 2, 3, "hello", FALSE, 2 + 4i, c(50:100)))
+```
+
+# lists can contain lists & vectors
+```{r}
+(list2 <- list(1, 2, 3, "hello", FALSE, 2 + 4i, c(50:100), list1))
+```
+
+
+```{r}
+(mylist <- list(a = 1:5, b = "Hi There", c = function(x) x * sin(x)))
+```
+
+# "mylist" contains three things, named "a," "b," and "c". 
+Their lengths are different: a has length 5, b has length 1, 
+and c is a function, so it doesn't really have a length
+Technically, it has length of 1
+```{r}
+(typeof(mylist))
+length(mylist)
+mylist[1]
+mylist[1] + 1      # Can we do math on that?
+```
+
+
+```{r}
+set.seed(234)
+myValues <- rnorm(100, mean = 450, sd = 10)
+head(myValues)
+mean(myValues)
+median(myValues)
+min(myValues)
+max(myValues)
+sum(myValues)
+sd(myValues)
+class(myValues)
+length(myValues) # SOME FUNCTIONS RETURN SINGLE VALUES (AGGREGATE FUNCTIONS)
+head(log(myValues), 3)   # OTHERS RETURN A VALUE FOR EACH COMPONENT OF THE VECTOR
+head(log10(myValues), 3)  # CAREFUL: DIFFERENCE BETWEEN LOG10 AND LOG
+(mySqrt <- sqrt(myValues))
+
+hist(myValues)
+plot(myValues)
+boxplot(myValues)
+```
+
+###################
+# STRUCTURE TYPE 3#
+###################
+
+# DATA.FRAMES - a table or a two-dimensional array-like structure each column contains values of one variable each row contains one set of values from each column
+
+Requirements for a data frame
+1) the column names should be non-empty.
+2) the row names should be unique.
+3) the data can be of numeric, factor or character type.
+4) each column should contain same number of data items
+
+# Example 1 
+```{r}
+(n = c(2, 3, 5))
+(s = c("aa", "bb", "cc"))
+(b = c(TRUE, FALSE, TRUE)) 
+(df = data.frame(n, s, b))
+
+str(df)
+summary(df)
+```
+
+# Example 2
+```{r}
+(emp.data <- data.frame(
+  emp_id = runif (10,1000,9999), 
+  emp_name = c("Rick","Dan","Michelle","Reenah","Gary","Pamela",
+               "Flora", "Gilbert", "Aubrey", "Daniel"),
+  salary = c(62433.3,51875.2,76112.0,72934.0,84213.25,58972.3,
+             49782.4,73538.2,79815,84398.2), 
+  start_date = as.Date(c("2012-01-01", "2013-09-23", "2014-11-15", "2014-05-11","2015-03-27","2010-03-09","2015-12-30","2009-8-27",
+"2013-07-22", "2016-10-05")),
+  stringsAsFactors = FALSE
+))
+```
+
+
+# Example 3
+```{r}
+(id <- (1:200))
+(group <- c(rep("Vehicle", 100), rep("Drug", 100)))
+(response <- c(rnorm(100, mean = 25, sd = 5), rnorm(100, mean = 23, sd = 5)))
+(myData <- data.frame(Patient = id, Treatment = group, Response = response))
+
+head(myData) # REMIND DATA WILL BE DIFFERENT BECAUSE OF RANDOM SEED
+head(myData) # default of first 6 rows
+head(myData, 15)
+tail(myData, 12)
+dim(myData)
+str(myData)
+summary(myData)
+```
+
+# SUBSETTING DATA.FRAMES ----
+```{r}
+myData[1, 2] #[ROWS, COLUMNS]
+myData[2, 3]
+myData[1:20, 2:3]
+myData[1:20, ]
+
+#Similar subsets
+myData[, 3]
+myData[, "Response"]
+myData$Response
+
+myData[myData$Response > 26, ]
+myData[myData$Treatment == "Vehicle" & myData$Response <= 23, ]
+myData[myData$Treatment == "Vehicle" | myData$Response >= 21, ]
+myData[myData$Treatment != "Vehicle" | myData$Response > 24, ]
+(age <- round(rnorm(200, mean = 40, sd = 20)))
+myData$Age <- age
+head(myData)
+```
+
+# Important OBJECT in FINANCE - DATE Object
+You can convert many representations of date and time to date objects. Create a vector of dates represented as month/day/year character strings
+
+```{r}
+(x <- c("06/23/2013", "06/30/2013", "07/12/2014"))
+class(x)
+```
+
+#  R treats the vector x as characters. To force R to interpret these as dates, use lubridate's mdy function to convert date strings the date elements are ordered as month, day and year
+
+```{r}
+install.packages("lubridate")
+library(lubridate)
+
+# The easiest way to get lubridate is to install the whole tidyverse
+?mdy
+(x.date <- mdy(x))
+(class(x.date))
+
+# Other lubridate functions - dmy() - day/month/year
+	
+(bday <- dmy("14/10/1979"))
+(month(bday))
+(wday(bday, label = TRUE))
+
+year(bday) <- 2016
+wday(bday, label = TRUE)
+
+
+ymd(20101215)	 # year/month/day
+ydm()	 # year/day/month
+mdy_hms # will add hours, min, sec
+now()
+```
+
+ 
+###################
+# STRUCTURE TYPE 4#
+###################
+
+# Matrix function in R - data is entered by columns starting with column one
+matrix(data, nrow, ncol, byrow) # default is fill by column
+matrix(data, nrow, ncol, byrow = TRUE) #now, by fill by row
+nrow is number of rows; ncol = number of columns
+```{r}
+(A <- matrix(c(2,3,-2,1,2,2),3,2))
+
+is.matrix(A) # is A a matrix?
+is.vector(A)
+dim(A)
+```
+
+# Multiplication by a Scalar
+```{r}
+c <- 3
+c*A
+```
+
+# Matrix Addition & Subtraction
+```{r}
+(B <- matrix(c(1,4,-2,1,2,1),3,2))
+(C <- A + B)
+
+(D <- A - B)
+```
+
+# Matrix Multiplication
+```{r}
+(E <- matrix(c(2,3,-2,1,2,2),3,2))
+(F <- matrix(c(2,-2,1,2,3,1),2,3))
+(G <- F %*% E) # multiplicable? what's the resultant size?
+(H <- E %*% F) # multiplicable? what's the resultant size?
+
+(J <- matrix(c(2,1,3),1,3))
+(K <- J %*% A)
+(L <- A %*% J) # multiplicable
+```
+
+# Transpose of a Matrix
+```{r}
+(AT <- t(A))
+
+(ATT <- t(AT))
+```
+
+
+# Common Vectors
+Unit Vector
+```{r}
+(U <- matrix(1,3,1))
+```
+
+# Zero Vector
+```{r}
+(Z <- matrix(0,3,1))
+```
+
+# Common Matrices
+Unit Matrix
+```{r}
+(U1 <- matrix(1,3,2))
+```
+
+# Zero Matrix
+```{r}
+(Z <- matrix(0,3,2))
+```
+
+# Diagonal Matrix
+```{r}
+(S <- matrix(c(2,3,-2,1,2,2,4,2,3),3,3))
+(W <- diag(S))
+(W1 <- diag(diag(S)))
+```
+
+
+# Identity Matrix
+```{r}
+(I1 <- diag(c(1,1,1)))
+```
+
+
+# Symmetric Matrix
+```{r}
+(L <- matrix(c(2,1,5,1,3,4,5,4,-2),3,3))
+(LT <- t(L))
+```
+
+# Inverse of a Matrix
+```{r}
+(A <- matrix(c(4,4,-2,2,6,2,2,8,4),3,3))
+
+(AI <- solve(A))
+(A %*% AI)
+(AI %*% A)
+```
+
+# Inverse & Determinant of a Matrix
+```{r}
+(C <- matrix(c(2,1,6,1,3,4,6,4,-2),3,3))
+(CI <- solve(C))
+(C %*% CI)
+(CI %*% C)
+```
+
+# Determinant of a Matrix
+```{r}
+(d <- det(C)) 
+```
+
+# Horizontal Concatenation
+```{r}
+(P <- matrix(c(2,3,-2,1,2,2),3,2))
+
+(Q <- matrix(c(1,3,2,1,4,2),3,2))
+
+(H <- cbind(P,Q))
+```
+
+# Vertical Concatenation (Appending)
+```{r}
+(V <- rbind(A,B))
+```
+
+
+EXERCISE 
+
+R comes with several built-in data sets generally used as demo data for playing with R functions. Answer the questions 1 to 10. 
+
+```{r}
+data()  # to determine datasets that come with R
+data(package = .packages(all.available = TRUE)) # to access all 
+data(package="mtcars") # to load mtcars dataset
+data("mtcars")  # same as above
+?mtcars        # to know more about this dataset
+```
+
+1) Load the dataset to R
+2) View first 10 rows
+3) View last 10 rows
+4) Determine class structure of mtcars
+5) How many rows and columns does the dataset have? Use code
+6) generate the 5-number summary
+7) what are the quantiles of the "mpg" variable
+8) what is the variance of "disp" variable
+9) use the result of #8 to determine its standard deviation
+10)  Generate the 3rd and 24th row of the dataset
+11) Generate the subset for "Datsun 710" and "Camaro Z28"
+12) What do the values of "am" variable indicate
+13) Generate a subset where "am" = 0 and the "mpg" variable
+14) Generate a subset where "am" =1 and the "mpg" and "disp"
+10) generate a histogram of "qsec" Hint: use hist().Describe the plot
+11) Use the plot(mtcars) function. Describe the output
+
+
+
+
+
+
+
+
+
