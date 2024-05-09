@@ -1,0 +1,245 @@
+---
+title: "Multivar"
+output: html_notebook
+---
+
+===============================================
+
+Execute whole chunk: *Ctrl+Shift+Enter*
+Execute Line within chunk: *Ctrl+Enter*
+Create new chunk: *Ctrl+Alt+I*
+Preview HTML output: *Ctrl+Shift+K*
+
+
+
+```{r}
+print('Correlation Numerical Test for variables EARNINGS and S')
+  
+```
+
+===============================================
+
+
+```{r, Load pkg}
+library(pacman)
+pacman::p_load(safetensors,reticulate,odbc,tensorflow,tidyverse,quantmod,psych,pastecs,olsrr,stargazer,ggfortify,caTools,car,MASS,corrplot,performance,flexdashboard,tidymodels,dplyr,ggplot2,tidyr,sparklyr,purrrlyr,GGally,openxlsx)
+#R.version
+```
+
+===============================================
+
+## Formula and Calculation of Multiple Linear Regression 
+##https://rmd4sci.njtierney.com/math
+##LaTeX
+$$
+\begin{aligned}&y_i = \beta_0 + \beta _1 x_{i1} + \beta _2 x_{i2} + \beta _3 x_{i3} +  ... + \beta _n x_{in} + \epsilon_i
+
+\\&\textbf{where, for } i = n~\textbf{observations:}
+\\&y_i=\text{dependent variable}
+\\&x_i=\text{explanatory variables}
+\\&\beta_0=\text{y-intercept (constant term)}
+\\&\beta_n=\text{slope coefficients for each explanatory variable}
+\\&\epsilon_i=\text{the model's error term (also known as the residuals)}
+\end{aligned}
+$$
+
+===============================================
+
+
+
+```{r, DataFrame}
+df = read.xlsx("EAWE04.xlsx", sheet = 1)
+```
+
+
+```{r, EDA}
+colnames(df)
+view(df)
+
+```
+
+```{r, Correlation Test}
+cor.test(df$EARNINGS, df$S)
+```
+===============================================
+
+```{r}
+##Script used in PCA class
+
+EAWE01 <- within(EAWE01, {
+  URBAN <- factor(URBAN, labels=c('Urban','Rural','Others'))
+})
+Boxplot(EARNINGS ~ URBAN, data=EAWE01, id=list(method="y"))
+library(mvtnorm, pos=18)
+library(survival, pos=18)
+library(MASS, pos=18)
+library(TH.data, pos=18)
+library(multcomp, pos=18)
+library(abind, pos=23)
+AnovaModel.1 <- aov(EARNINGS ~ URBAN, data = EAWE01)
+summary(AnovaModel.1)
+with(EAWE01, numSummary(EARNINGS, groups = URBAN, statistics=c('mean', 'sd')))
+AnovaModel.2 <- aov(EARNINGS ~ URBAN, data = EAWE01)
+summary(AnovaModel.2)
+with(EAWE01, numSummary(EARNINGS, groups = URBAN, statistics=c('mean', 'sd')))
+local({
+  .Pairs <- glht(AnovaModel.2, linfct = mcp(URBAN = "Tukey"))
+  print(summary(.Pairs)) # pairwise tests
+  print(confint(.Pairs, level=0.95)) # confidence intervals
+  print(cld(.Pairs, level=0.05)) # compact letter display
+  old.oma <- par(oma=c(0, 5, 0, 0))
+  plot(confint(.Pairs))
+  par(old.oma)
+})
+LinearModel.3 <- lm(EARNINGS ~ URBAN*GENDER, data = EAWE01)
+summary(LinearModel.3)
+Anova(LinearModel.3, type="II")
+with(EAWE01, plotMeans(EARNINGS, URBAN, error.bars="se", connect=TRUE))
+local({
+  .Table <- xtabs(~GENDER+URBAN, data=EAWE01)
+  cat("\nFrequency table:\n")
+  print(.Table)
+  .Test <- chisq.test(.Table, correct=FALSE)
+  print(.Test)
+})
+
+
+
+
+```
+
+
+
+
+```{r}
+## same as above but in markdown
+
+```
+
+
+<!-- R Commander Markdown Template -->
+
+Replace with Main Title
+=======================
+
+### chard
+
+### `r as.character(Sys.Date())`
+
+```{r echo=FALSE}
+# include this code chunk as-is to set options
+knitr::opts_chunk$set(comment=NA, prompt=TRUE, out.width=750, fig.height=8, fig.width=8)
+library(Rcmdr)
+library(car)
+library(RcmdrMisc)
+```
+
+```{r}
+EAWE01 <- within(EAWE01, {
+  URBAN <- factor(URBAN, labels=c('Urban','Rural','Others'))
+})
+```
+
+
+### Boxplot: EARNINGS ~ URBAN
+```{r}
+Boxplot(EARNINGS ~ URBAN, data=EAWE01, id=list(method="y"))
+```
+
+```{r}
+library(mvtnorm, pos=18)
+```
+
+
+```{r}
+library(survival, pos=18)
+```
+
+
+```{r}
+library(MASS, pos=18)
+```
+
+
+```{r}
+library(TH.data, pos=18)
+```
+
+
+```{r}
+library(multcomp, pos=18)
+```
+
+
+```{r}
+library(abind, pos=23)
+```
+
+
+
+### One-Way Analysis of Variance: EARNINGS ~ URBAN
+```{r}
+AnovaModel.1 <- aov(EARNINGS ~ URBAN, data = EAWE01)
+summary(AnovaModel.1)
+with(EAWE01, numSummary(EARNINGS, groups = URBAN, statistics=c('mean', 'sd')))
+```
+
+
+### One-Way Analysis of Variance: EARNINGS ~ URBAN
+```{r}
+AnovaModel.2 <- aov(EARNINGS ~ URBAN, data = EAWE01)
+summary(AnovaModel.2)
+with(EAWE01, numSummary(EARNINGS, groups = URBAN, statistics=c('mean', 'sd')))
+local({
+  .Pairs <- glht(AnovaModel.2, linfct = mcp(URBAN = "Tukey"))
+  print(summary(.Pairs)) # pairwise tests
+  print(confint(.Pairs, level=0.95)) # confidence intervals
+  print(cld(.Pairs, level=0.05)) # compact letter display
+  old.oma <- par(oma=c(0, 5, 0, 0))
+  plot(confint(.Pairs))
+  par(old.oma)
+})
+```
+
+
+### Linear Model: LinearModel.3: EARNINGS ~ URBAN*GENDER
+```{r}
+LinearModel.3 <- lm(EARNINGS ~ URBAN*GENDER, data = EAWE01)
+summary(LinearModel.3)
+```
+
+
+### Analysis of Variance: LinearModel.3
+```{r}
+Anova(LinearModel.3, type="II")
+```
+
+
+### Plot of Means: EARNINGS by URBAN
+```{r}
+with(EAWE01, plotMeans(EARNINGS, URBAN, error.bars="se", connect=TRUE))
+```
+
+
+### Two-Way Contingency Table: GENDER, URBAN
+```{r}
+local({
+  .Table <- xtabs(~GENDER+URBAN, data=EAWE01)
+  cat("\nFrequency table:\n")
+  print(.Table)
+  .Test <- chisq.test(.Table, correct=FALSE)
+  print(.Test)
+})
+```
+
+
+===============================================
+
+
+
+
+
+https://guides.nyu.edu/quant/choose_test_NDV
+
+
+
