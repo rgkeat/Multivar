@@ -1,0 +1,102 @@
+---
+title: "QuantDL_HW1"
+author: Richard Gan 
+date: "`r Sys.Date()`"
+output:html
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br>
+# ===============================================
+<------------- PKG ------------->
+```{r,warning = FALSE,message = FALSE,pkg}
+#install.packages('pacman')
+require(pacman)
+pacman::p_load(stats,RSQLite,tinytex,safetensors,reticulate,odbc,tensorflow,tidyverse,quantmod,psych,pastecs,olsrr,stargazer,ggfortify,caTools,car,MASS,corrplot,performance,flexdashboard,tidymodels,dplyr,ggplot2,tidyr,sparklyr,purrrlyr,GGally,openxlsx,YieldCurve,quantmod,odbc,getPass,quantreg,quantdr,quantdl)
+```
+
+<br>
+# ===============================================
+<------------- DESC ------------->
+
+->>>> quantmod
+Overview:
+quantmod stands for "Quantitative Financial Modelling Framework" and is a popular package for financial modeling, trading, and data visualization in R.
+
+Key Features:
+Data Retrieval: It can download financial data from various sources (e.g., Yahoo Finance, Google Finance).
+Charting: It provides tools for creating complex financial charts.
+Technical Indicators: It includes a wide array of technical analysis indicators (e.g., moving averages, Bollinger Bands).
+Data Manipulation: It supports data manipulation and transformation operations.
+
+->>>> quantdr
+Overview:
+quantdr is less common and focuses on dimension reduction techniques for high-dimensional data, which is particularly useful in statistical modeling and machine learning.
+
+Key Features:
+Dimension Reduction: Implements various methods for dimension reduction such as Principal Component Analysis (PCA), Independent Component Analysis (ICA), and Factor Analysis.
+Statistical Analysis: Provides tools for the statistical analysis of reduced dimension data.
+Visualization: Offers visualization tools for high-dimensional data and the results of dimension reduction.
+
+->>>> quantdl
+Overview:
+As of now, there isn't a well-known quantdl package in the R ecosystem. It's possible you might be referring to a hypothetical or specific-use package that isn't widely recognized or has been confused with another package.
+
+Summary of Differences:
+Purpose:
+
+quantmod: Primarily focused on financial data retrieval, charting, and technical analysis.
+quantdr: Focused on dimension reduction techniques for statistical and machine learning applications.
+quantdl: No widely known package by this name, may be a typographical error or niche package.
+Key Use Cases:
+
+quantmod: Ideal for financial analysts, traders, and quantitative researchers working with market data.
+quantdr: Suitable for data scientists and statisticians working with high-dimensional datasets requiring dimension reduction.
+
+<br>
+# ===============================================
+<------------- CODE ------------->
+
+```{r,quantdl}
+
+getSymbols("AAPL", from = "2020-01-01", to = "2023-12-31")
+head(AAPL)
+chartSeries(AAPL, theme = chartTheme("white"), name = "Apple Inc. (AAPL)")
+addSMA(n = 50, col = "blue")
+addSMA(n = 200, col = "red")
+returns <- dailyReturn(AAPL)
+chartSeries(returns, theme = chartTheme("white"), name = "Daily Returns of AAPL")
+summary(returns)
+# Install and load the package
+install.packages("quantmod")
+library(quantmod)
+
+# import historical NSDQ:APPL
+getSymbols("AAPL", from = "2020-01-01", to = "2023-12-31")
+
+#View first rows
+head(AAPL)
+
+#Plot 
+chartSeries(AAPL, theme = chartTheme("white"), name = "Apple Inc. (AAPL)")
+
+# Add  indicators: 50-day and 200-day MA
+addSMA(n = 50, col = "blue")
+addSMA(n = 200, col = "red")
+
+#compute + plot daily
+returns <- dailyReturn(AAPL)
+chartSeries(returns, theme = chartTheme("white"), name = "Daily Returns of AAPL")
+
+
+summary(returns)
+
+
+```
+<br>
+# ===============================================
+<------------- END ------------->
